@@ -25,21 +25,37 @@ def getFile(file):
 
 @app.route('/load', methods=['POST'])
 def load():
-    file = request.files.get("file")
-    data = json.loads(request.data)
-    print(file)
+    # data = json.loads(request.get_data("data"))
+    uri = request.form['uri']
+    file_hash = request.form['file_hash']
+    file_bytes = request.form['file']
     new_file = None
     try:
-        new_file = File(uri=data.get("uri"), file_hash=data.get("file_hash"))
+        new_file = File(uri=uri, file_hash=file_hash)
     except:
-        message = "Error parsing file: " + data.get("uri")
+        message = "Error parsing file: " + uri
         return Response(message, status=500)
     
-    try:
-        file.save('backup/'+data.get("uri"))
-    except:
-        message = "Error saving the file: " + data.get("uri")
-        return Response(message, status=500)
+    # try:
+    #     if not os.path.exists('backup'):
+    #         os.mkdir('backup')
+    #     if not os.path.exists('backup/'+uri):
+    #         fd = os.open('backup/'+uri, os.O_WRONLY | os.O_CREAT)
+    #         os.close(fd)
+    #     with open('backup/'+uri, 'wb') as file:
+    #         file.write(bytes(file_bytes))
+
+    # except Exception as e:
+    #     message = "Error saving the file: " + uri
+    #     return Response(e, status=500)
+
+    if not os.path.exists('backup'):
+        os.mkdir('backup')
+    if not os.path.exists('backup/'+uri):
+        fd = os.open('backup/'+uri, os.O_WRONLY | os.O_CREAT)
+        os.close(fd)
+    with open('backup/'+uri, 'wb') as file:
+        file.write(bytes(file_bytes))
 
     db.session.add(new_file)
     db.session.commit()

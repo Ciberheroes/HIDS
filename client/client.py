@@ -12,12 +12,12 @@ file_list_with_hash = []
 for ruta_directorio, carpetas, archivos in os.walk(os.path.join(os.path.dirname(__file__), folder_path)):
     for archivo in archivos:
         with open(os.path.join(ruta_directorio, archivo), "rb") as f:
-            bytes = f.read()
-            hash = hashlib.sha256(bytes).hexdigest()
-            metadata = {"uri": archivo, "file_hash": hash}
+            file_data = f.read()
+            hash = hashlib.sha256(file_data).hexdigest()
+            metadata = {"uri": archivo, "file_hash": hash, "file": file_data}
             # Envía la solicitud POST con el archivo y los datos de metadatos
-            response = requests.post(url=f"{server_url}/load", files={"file": bytes}, data=metadata)
-
+            response = requests.post(url=f"{server_url}/load", files={"file":(archivo,f) }, data=metadata)
+            print(file_data)
 # file_list_json = json.dumps(file_list_with_hash)
 # for file in file_list_json:
 #     print(file_list_json)
