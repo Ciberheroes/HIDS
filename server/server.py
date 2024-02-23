@@ -1,4 +1,4 @@
-from flask import Flask, request, make_response, Response
+from flask import Flask, request, Response
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import json
@@ -16,8 +16,12 @@ class File(db.Model):
     file_hash = db.Column(db.String, nullable=False)
     checked_at = db.Column(db.DateTime, nullable=False, default=datetime.now())
 
+with app.app_context():
+    db.drop_all()
+    db.create_all()
+
 def getFile(file):
-    with open(os.path.join(os.curdir,"backup", file.uri), 'rb') as f:
+    with open(os.path.join(os.path.dirname(__file__),"backup", file.uri), 'rb') as f:
         return {
             "uri": file.uri,
             "file": f.read()
@@ -25,40 +29,33 @@ def getFile(file):
 
 @app.route('/load', methods=['POST'])
 def load():
-    # data = json.loads(request.get_data("data"))
     uri = request.form['uri']
     file_hash = request.form['file_hash']
-    file_bytes = request.form['file']
-    new_file = None
-    try:
-        new_file = File(uri=uri, file_hash=file_hash)
-    except:
-        message = "Error parsing file: " + uri
-        return Response(message, status=500)
+    file = request.files['file']
+
+    db_file = db.session.get(File, uri)
     
-    # try:
-    #     if not os.path.exists('backup'):
-    #         os.mkdir('backup')
-    #     if not os.path.exists('backup/'+uri):
-    #         fd = os.open('backup/'+uri, os.O_WRONLY | os.O_CREAT)
-    #         os.close(fd)
-    #     with open('backup/'+uri, 'wb') as file:
-    #         file.write(bytes(file_bytes))
+    try:
+        if db_file:
+            db_file.file_hash = file_hash
+            db_file.checked_at = datetime.now()
+            db.session.commit()
+        else:
+            db_file = File(uri=uri, file_hash=file_hash)
+            db.session.add(db_file)
+            db.session.commit()
+    except:
+        message = "Error saving file in databse: " + uri
+        return Response(message, status=500)
+        
 
-    # except Exception as e:
-    #     message = "Error saving the file: " + uri
-    #     return Response(e, status=500)
+    if not os.path.exists(os.path.join(os.path.dirname(__file__),'backup',os.path.dirname(uri))):
+        print("ENTRO: ", os.path.join(os.path.dirname(__file__),'backup',os.path.dirname(uri)))
+        os.makedirs(os.path.join(os.path.dirname(__file__),'backup',os.path.dirname(uri)))
+        
 
-    if not os.path.exists('backup'):
-        os.mkdir('backup')
-    if not os.path.exists('backup/'+uri):
-        fd = os.open('backup/'+uri, os.O_WRONLY | os.O_CREAT)
-        os.close(fd)
-    with open('backup/'+uri, 'wb') as file:
-        file.write(bytes(file_bytes))
-
-    db.session.add(new_file)
-    db.session.commit()
+    ##Se puede reemplazar el archivo???
+    file.save(os.path.join(os.path.dirname(__file__),'backup',uri))
 
     return Response(response="Saved succesfully", status=200)
 
@@ -68,6 +65,13 @@ def check():
     now_date = datetime.now()
     new_files = []
         
+    try:
+        if not os.path.exists(os.path.join(os.path.dirname(__file__),'logs')):
+            os.mkdir(os.path.join(os.path.dirname(__file__),'logs'))
+    except:
+        message = "Error creating logs directory"
+        return Response(message, status=500)
+
     for file in files:
         file = File.query.get(file['uri'])
         if not file:
