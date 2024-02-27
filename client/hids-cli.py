@@ -39,14 +39,13 @@ def dropload_directory():
         print(f"ERROR: Failed to delete files. Server responded with: {response.content}")
 
 def restore(uri):
-    print(f"-> Restoring file {uri}")
     response = requests.get(server_url +'/restore', params={'uri': uri})
     if response.status_code == 200:
         with open(uri, 'wb') as f:
             f.write(response.content)
-        print("OK: File restored successfully.")
+        print(f"-> Restored: {uri}")
     else:
-        print(f"ERROR: Failed to restore file. Server responded with: {response.content}")
+        print(f"ERROR: Failed to restore file. Server responded with: {response.content}\n")
 
 def check_files():
     file_list_with_hash = []
@@ -63,35 +62,36 @@ def check_files():
     modified= json_response["modified"]
     not_found = json_response["not_found"]
 
+    print("\n### Untracked files ###\n")
     if len(untracked) > 0:
-        print("### Untracked files ###\n")
         for file in untracked:
             if untracked_action:
-                print(f"-> Deleting file {file['uri']}")
+                print(f"-> Deleted: {file['uri']}")
                 os.remove(file["uri"])
             else:
                 print(file["uri"])
     else:
-        print("### No untracked files ###\n")
+        print("None\n")
 
+    print("\n### Modified files ###\n")
     if len(modified) > 0:
-        print("### Modified files ###\n")
+        
         for file in modified:
             restore(file["uri"])
     else:
-        print("### No modified files ###\n")
+        print("None\n")
     
+    print("\n### Not found files ###\n")
     if len(not_found) > 0:
-        print("### Not found files ###\n")
         for file in not_found:
             restore(file["uri"])
     else:
-        print("### No deleted files ###\n")
+        print("None\n")
 
 def send_report(day_of_report,month=None,year=None):
     
     if date.today().day == day_of_report:
-        print("### Triggering send of report ###\n")
+        print("-> Sending report\n")
         if month and year:
             response = requests.get(url=f"{server_url}/report", params={'month': month, 'year': year})
         else:
@@ -106,8 +106,6 @@ def check_periodically(hour_period, day_of_report = 1):
     while True:
         schedule.every(hour_period).hours.do(check_files)
         schedule.every().day.at("00:00").do(send_report(day_of_report))
-
-## TODO: Configuración sobre qué hacer con los untracked
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='hids-cli')

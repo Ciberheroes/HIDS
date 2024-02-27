@@ -146,27 +146,31 @@ def send_email():
         year = datetime.now().strftime("%Y")
 
     email_body = ""
-    
-    print(os.walk(os.path.join(os.path.dirname(__file__),'logs')))
-    print("AQUIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII")
-    files, _ , root = os.walk(os.path.join(os.path.dirname(__file__),'logs'))
-    
-    files = filter(lambda f: re.match(f"^{year}-{month}",f),files)
 
+    files = []
+    for ruta_directorio, _, archivos in os.walk(os.path.join(os.path.dirname(__file__), 'logs')):
+        for archivo in archivos:
+            files.append(os.path.join(ruta_directorio, archivo))
+    
+    files = list(filter(lambda f: re.match(f".*\/{year}-{month.zfill(2)}.*",f),files))
+    print(files)
+    
     if not files:
         return Response("No logs found", status=404)
     else:
         files = sorted(files, key=lambda f: os.path.getmtime(f))
         for file in files:
-            print(os.path.join(root,file))
-            with open(os.path.join(root,file), 'r') as f:
+            print("Mira este fichero:",file)
+            with open(file, 'r') as f:
                 email_body += f.read()
                 email_body += "\n\n"
+    
+    print(email_body)
     try:
         message = MIMEMultipart()
         message['From'] = APP_EMAIL
         message['To'] = CLIENT_EMAIL
-        message['Subject'] = "HIDS Report" + month + "/" + year
+        message['Subject'] = "HIDS Report: " + year+ "-" + month.zfill(2) 
         message.attach(MIMEText(email_body, 'plain'))
         
 
@@ -175,8 +179,10 @@ def send_email():
         server.login(APP_EMAIL, APP_EMAIL_PASSWORD)
         server.sendmail(APP_EMAIL, CLIENT_EMAIL, message.as_string())
         server.quit()
+        return Response("Report sent successfully, check your email.", status=200)
     except:
         print("Error sending email")
+        return Response("Error sending report", status=500)
 if __name__ == '__main__':
     
     app.run(debug=True, host='localhost', port=5000)
