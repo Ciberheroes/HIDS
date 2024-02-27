@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import json
 import os
-import sys
+from werkzeug.serving import WSGIRequestHandler
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
@@ -42,6 +42,7 @@ def load():
             db.session.commit()
         else:
             db_file = File(uri=uri, file_hash=file_hash)
+            print(db_file)
             db.session.add(db_file)
             db.session.commit()
     except:
@@ -50,7 +51,6 @@ def load():
         
 
     if not os.path.exists(os.path.join(os.path.dirname(__file__),'backup',os.path.dirname(uri))):
-        print("ENTRO: ", os.path.join(os.path.dirname(__file__),'backup',os.path.dirname(uri)))
         os.makedirs(os.path.join(os.path.dirname(__file__),'backup',os.path.dirname(uri)))
         
 
@@ -60,10 +60,15 @@ def load():
     return Response(response="Saved succesfully", status=200)
 
 @app.route('/check', methods=['POST'])
-def check():
-    files = request.get_json()
+def check(): 
+    files = json.loads(request.json)
     now_date = datetime.now()
-    new_files = []
+    
+    log = open(os.path.join(os.path.dirname(__file__),'logs',now_date.strftime("%Y-%m-%d-%H-%M-%S") + ".log"), "w")
+    
+    untracked = []
+    modified = []
+    not_found = []
         
     try:
         if not os.path.exists(os.path.join(os.path.dirname(__file__),'logs')):
@@ -73,20 +78,27 @@ def check():
         return Response(message, status=500)
 
     for file in files:
-        file = File.query.get(file['uri'])
-        if not file:
-            ##Se pueden añadir archivos nuevos???
-            new_files.append(File(uri=file['uri'], file_hash=file['hash'], date=now_date))
+        db_file = db.session.get(File,file['uri'])
+        print(File.query.all())
+        if not db_file:
+            untracked.append({"uri": file['uri'], "hash": file['file_hash']})
         else:
-            File.query.filter_by(uri=file['uri']).update(date=datetime.now())
+            db_file.checked_at = datetime.now()
+            if db_file.file_hash != file['file_hash']:    
+                modified.append({"uri": file['uri'], "hash": file['file_hash']})
 
     db.session.commit()
-    not_found = [getFile(f) for f in File.query.filter(lambda x: x.checked_at < now_date)]
     
-    return Response(json.dumps(new_files,not_found), status=200, mimetype="application/json")
+    not_found = [getFile(f) for f in File.query.filter(File.checked_at < now_date)]
+    
+    return Response(json.dumps({"untracked": untracked,"modified": modified,"not_found": not_found}), status=200, mimetype="application/json")
             
     
+
+excluded_directories = [os.path.join(os.path.dirname(__file__),'backup'), os.path.join(os.path.dirname(__file__),'logs')]
+     
 if __name__ == '__main__':
+    #app.run(debug=True, host='localhost', port=5000, use_reloader=False)
     app.run(debug=True, host='localhost', port=5000)
 
 
