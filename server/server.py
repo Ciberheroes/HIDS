@@ -1,24 +1,33 @@
-from flask import Flask, request, Response
+import re
+from flask import Flask, request, Response, send_file
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import json
 import os
-from werkzeug.serving import WSGIRequestHandler
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import shutil
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL")
 db = SQLAlchemy(app)
 
+# Email configuration
+CLIENT_EMAIL = os.getenv("CLIENT_EMAIL")
+APP_EMAIL = os.getenv("APP_EMAIL")
+EMAIL_HOST = os.getenv("EMAIL_HOST")
+APP_EMAIL_PASSWORD = os.getenv("APP_EMAIL_PASSWORD")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS")
+EMAIL_PORT= os.getenv("EMAIL_PORT")
 
-# File model
+with app.app_context():
+    db.create_all()
+
 class File(db.Model):
     uri = db.Column(db.String, primary_key=True)
     file_hash = db.Column(db.String, nullable=False)
     checked_at = db.Column(db.DateTime, nullable=False, default=datetime.now())
-
-with app.app_context():
-    db.drop_all()
-    db.create_all()
 
 def getFile(file):
     with open(os.path.join(os.path.dirname(__file__),"backup", file.uri), 'rb') as f:
@@ -27,11 +36,22 @@ def getFile(file):
             "file": f.read()
         }
 
+@app.route('/drop', methods=['GET'])
+def drop():
+    db.drop_all()
+    db.create_all()
+    if os.path.exists(os.path.join(os.path.dirname(__file__),'backup')):
+        shutil.rmtree(os.path.join(os.path.dirname(__file__),'backup'))
+    return Response("Database dropped and created", status=200)
+
 @app.route('/load', methods=['POST'])
 def load():
     uri = request.form['uri']
     file_hash = request.form['file_hash']
     file = request.files['file']
+
+    if not os.path.exists(os.path.join(os.path.dirname(__file__),'backup')):
+        os.makedirs(os.path.join(os.path.dirname(__file__),'backup'))
 
     db_file = db.session.get(File, uri)
     
@@ -42,7 +62,6 @@ def load():
             db.session.commit()
         else:
             db_file = File(uri=uri, file_hash=file_hash)
-            print(db_file)
             db.session.add(db_file)
             db.session.commit()
     except:
@@ -53,8 +72,6 @@ def load():
     if not os.path.exists(os.path.join(os.path.dirname(__file__),'backup',os.path.dirname(uri))):
         os.makedirs(os.path.join(os.path.dirname(__file__),'backup',os.path.dirname(uri)))
         
-
-    ##Se puede reemplazar el archivo???
     file.save(os.path.join(os.path.dirname(__file__),'backup',uri))
 
     return Response(response="Saved succesfully", status=200)
@@ -63,8 +80,6 @@ def load():
 def check(): 
     files = json.loads(request.json)
     now_date = datetime.now()
-    
-    log = open(os.path.join(os.path.dirname(__file__),'logs',now_date.strftime("%Y-%m-%d-%H-%M-%S") + ".log"), "w")
     
     untracked = []
     modified = []
@@ -77,9 +92,13 @@ def check():
         message = "Error creating logs directory"
         return Response(message, status=500)
 
+    log = open(os.path.join(os.path.dirname(__file__),'logs',now_date.strftime("%Y-%m-%d_%H-%M-%S") + ".log"), "w")
+    log.write("********************************************************************\n")
+    log.write("Starting a check at " + now_date.strftime("%Y-%m-%d %H:%M:%S") + "\n")
+    log.write("********************************************************************\n\n")
+
     for file in files:
         db_file = db.session.get(File,file['uri'])
-        print(File.query.all())
         if not db_file:
             untracked.append({"uri": file['uri'], "hash": file['file_hash']})
         else:
@@ -89,16 +108,74 @@ def check():
 
     db.session.commit()
     
-    not_found = [getFile(f) for f in File.query.filter(File.checked_at < now_date)]
-    
+    not_found = [{"uri": f.uri,"hash":f.file_hash} for f in File.query.filter(File.checked_at < now_date)]
+
+    if len(untracked) == 0 and  len(modified) == 0 and len(not_found) == 0:
+        log.write("No changes found\n")
+    else:
+        for file in untracked:
+            log.write("Untracked file: " + file['uri'] + "\n")
+        
+        for file in modified:
+            log.write("Modified file: " + file['uri'] + "\n")
+
+        for file in not_found:
+            log.write("Not found file: " + file['uri'] + "\n")
+
     return Response(json.dumps({"untracked": untracked,"modified": modified,"not_found": not_found}), status=200, mimetype="application/json")
             
-    
+@app.route('/restore', methods=['GET'])
+def restore():
+    uri = request.args.get('uri')
+    file = File.query.get(uri)
+    if file:
+        try:
+            return send_file(os.path.join(os.path.dirname(__file__),'backup',file.uri), as_attachment=True)
+        except:
+            return Response("Error sending file, file might have been deleted.", status=500)
+    else:
+        return Response("File not found in server", status=404)
 
-excluded_directories = [os.path.join(os.path.dirname(__file__),'backup'), os.path.join(os.path.dirname(__file__),'logs')]
-     
+@app.route('/report', methods=['GET']) 
+def send_email():
+    month = request.args.get('month')
+    year = request.args.get('year')
+    if month is None:
+        month = datetime.now().strftime("%m")
+    if year is None:
+        year = datetime.now().strftime("%Y")
+
+    email_body = ""
+
+    files, _ , root = os.walk(os.path.join(os.path.dirname(__file__),'logs'))
+    
+    files = filter(lambda f: re.match(f"^{year}-{month}",f),files)
+
+    if not files:
+        return Response("No logs found", status=404)
+    else:
+        files = sorted(files, key=lambda f: os.path.getmtime(f))
+        for file in files:
+            print(os.path.join(root,file))
+            with open(os.path.join(root,file), 'r') as f:
+                email_body += f.read()
+                email_body += "\n\n"
+    try:
+        message = MIMEMultipart()
+        message['From'] = APP_EMAIL
+        message['To'] = CLIENT_EMAIL
+        message['Subject'] = "HIDS Report" + month + "/" + year
+        message.attach(MIMEText(email_body, 'plain'))
+        
+
+        server = smtplib.SMTP(EMAIL_HOST, EMAIL_PORT)
+        server.starttls()
+        server.login(APP_EMAIL, APP_EMAIL_PASSWORD)
+        server.sendmail(APP_EMAIL, CLIENT_EMAIL, message.as_string())
+        server.quit()
+    except:
+        print("Error sending email")
 if __name__ == '__main__':
-    #app.run(debug=True, host='localhost', port=5000, use_reloader=False)
     app.run(debug=True, host='localhost', port=5000)
 
 
