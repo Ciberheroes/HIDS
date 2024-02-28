@@ -1,3 +1,4 @@
+import hashlib
 import re
 from flask import Flask, request, Response, send_file
 from flask_sqlalchemy import SQLAlchemy
@@ -61,9 +62,12 @@ def load():
             db_file.checked_at = datetime.now()
             db.session.commit()
         else:
-            db_file = File(uri=uri, file_hash=file_hash)
-            db.session.add(db_file)
-            db.session.commit()
+            if (hashlib.sha256(file.read()).hexdigest() == file_hash):
+                db_file = File(uri=uri, file_hash=file_hash)
+                db.session.add(db_file)
+                db.session.commit()
+            else :
+                return Response("Hashes are not the same: " + uri, status=400)
     except:
         message = "Error saving file in databse: " + uri
         return Response(message, status=500)
