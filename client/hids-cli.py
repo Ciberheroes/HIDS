@@ -109,7 +109,7 @@ def check_periodically(hour_period, day_of_report = 1):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='hids-cli')
-    parser.add_argument('-dl', '--dropload',action="store_true", help='dueletes the current files and loads the directory recursively')
+    parser.add_argument('-dl', '--dropload',action="store_true", help='deletes the current files and loads the directory recursively')
     parser.add_argument('-l', '--load',action="store_true", help='loads the directory recursively')
     parser.add_argument('-c', '--check',action="store_true", help='checks the directory integrity, if no period is set, it will check once instantly')
     parser.add_argument('-cp','--check-period', metavar="", help='sets the checking period (hours)', type=int)
