@@ -8,12 +8,17 @@ import schedule
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+import signal
 
 load_dotenv()
 server_url = os.getenv("SERVER_URL")
 folder_path = os.getenv("FOLDER_PATH")
 # Booleano que indica si se deben eliminar los archivos no rastreados
 untracked_action = os.getenv("DELETE_UNTRACKED",False) == "True"
+
+def signal_handler(sig, frame):
+    print('Exiting...')
+    exit(0)
 
 def upload_directory():
 
@@ -105,9 +110,12 @@ def send_email(day_of_report,month=None,year=None):
 def check_periodically(hour_period, day_of_report = 1):
     while True:
         schedule.every(hour_period).hours.do(check_files)
-        schedule.every().day.at("00:00").do(send_email(day_of_report))
+        schedule.every().day.at("00:00").do(send_email,day_of_report)
 
 if __name__ == "__main__":
+    
+    signal.signal(signal.SIGINT, signal_handler)
+
     parser = argparse.ArgumentParser(description='hids-cli')
     parser.add_argument('-dl', '--dropload',action="store_true", help='deletes the current files and loads the directory recursively')
     parser.add_argument('-l', '--load',action="store_true", help='loads the directory recursively')
