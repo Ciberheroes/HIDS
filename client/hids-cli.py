@@ -88,7 +88,7 @@ def check_files():
     else:
         print("None\n")
 
-def send_report(day_of_report,month=None,year=None):
+def send_email(day_of_report,month=None,year=None):
     
     if date.today().day == day_of_report:
         print("-> Sending report\n")
@@ -105,7 +105,7 @@ def send_report(day_of_report,month=None,year=None):
 def check_periodically(hour_period, day_of_report = 1):
     while True:
         schedule.every(hour_period).hours.do(check_files)
-        schedule.every().day.at("00:00").do(send_report(day_of_report))
+        schedule.every().day.at("00:00").do(send_email(day_of_report))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='hids-cli')
@@ -135,7 +135,7 @@ if __name__ == "__main__":
         print("\n... Triggering send of report ...\n")
         try:
             input_date = datetime.strptime(args.report, "%Y-%m")
-            send_report(date.today().day,input_date.month,input_date.year)
+            send_email(date.today().day,input_date.month,input_date.year)
         except:
             print("ERROR: Invalid date format, use yyyy-mm")
         exit(1)

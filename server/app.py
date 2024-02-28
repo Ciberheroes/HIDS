@@ -157,7 +157,6 @@ def send_email():
             files.append(os.path.join(ruta_directorio, archivo))
     
     files = list(filter(lambda f: re.match(f".*\/{year}-{month.zfill(2)}.*",f),files))
-    print(files)
     
     if not files:
         return Response("No logs found", status=404)
@@ -169,7 +168,6 @@ def send_email():
                 email_body += f.read()
                 email_body += "\n\n"
     
-    print(email_body)
     try:
         message = MIMEMultipart()
         message['From'] = APP_EMAIL
