@@ -22,13 +22,14 @@ APP_EMAIL_PASSWORD = os.getenv("APP_EMAIL_PASSWORD")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS")
 EMAIL_PORT= os.getenv("EMAIL_PORT")
 
-with app.app_context():
-    db.create_all()
 
 class File(db.Model):
     uri = db.Column(db.String, primary_key=True)
     file_hash = db.Column(db.String, nullable=False)
     checked_at = db.Column(db.DateTime, nullable=False, default=datetime.now())
+
+with app.app_context():
+    db.create_all()
 
 def getFile(file):
     with open(os.path.join(os.path.dirname(__file__),"backup", file.uri), 'rb') as f:
